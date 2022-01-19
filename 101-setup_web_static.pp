@@ -5,6 +5,11 @@ exec { 'apt-get-update':
   path    => '/usr/bin:/usr/sbin:/bin',
 }
 
+exec { 'remove-current':
+  command => 'rm -rf /data/web_static/current',
+  path    => '/usr/bin:/usr/sbin:/bin',
+}
+
 package { 'nginx':
   ensure  => installed,
   require => Exec['apt-get-update'],
@@ -12,8 +17,6 @@ package { 'nginx':
 
 file { '/var/www':
   ensure  => directory,
-  owner   => 'www-data',
-  group   => 'www-data',
   mode    => '0755',
   recurse => true,
   require => Package['nginx'],
@@ -51,15 +54,9 @@ file { '/data/web_static/releases/test/index.html':
   require => Exec['make-static-files-folder'],
 }
 
-exec { 'remove-current':
-  command => 'rm -rf /data/web_static/current',
+exec { 'link-static-files':
+  command => 'ln -sf /data/web_static/releases/test/ /data/web_static/current',
   path    => '/usr/bin:/usr/sbin:/bin',
-}
-
-file { '/data/web_static/current':
-  ensure  => link,
-  target  => '/data/web_static/releases/test/',
-  replace => true,
   require => [
     Exec['remove-current'],
     File['/data/web_static/releases/test/index.html'],
@@ -69,13 +66,12 @@ file { '/data/web_static/current':
 exec { 'change-data-owner':
   command => 'chown -hR ubuntu:ubuntu /data',
   path    => '/usr/bin:/usr/sbin:/bin',
-  require => File['/data/web_static/current'],
+  require => Exec['link-static-files'],
 }
 
-file { '/etc/nginx/sites-available/airbnbclone':
-  ensure  => file,
+file { '/etc/nginx/sites-available/default':
+  ensure  => present,
   mode    => '0644',
-  owner   => 'www-data',
   content =>
 "server {
 	listen 80 default_server;
@@ -88,7 +84,7 @@ file { '/etc/nginx/sites-available/airbnbclone':
 		root /var/www/html/;
 		try_files \$uri \$uri/ =404;
 	}
-	location /hbnb_static {
+	location /hbnb_static/ {
 		alias /data/web_static/current/;
 		try_files \$uri \$uri/ =404;
 	}
@@ -108,17 +104,20 @@ file { '/etc/nginx/sites-available/airbnbclone':
   ],
 }
 
-file { '/etc/nginx/sites-enabled/default':
-  ensure  => link,
-  target  => '/etc/nginx/sites-available/airbnbclone',
-  replace => true,
-  require => File['/etc/nginx/sites-available/airbnbclone'],
+exec { 'enable-site':
+  command => "ln -sf '/etc/nginx/sites-available/default' '/etc/nginx/sites-enabled/default'",
+  path    => '/usr/bin:/usr/sbin:/bin',
+  require => File['/etc/nginx/sites-available/default'],
 }
 
-service { 'nginx':
-  ensure     => running,
-  hasrestart => true,
-  require    => [
-    File['/etc/nginx/sites-enabled/default']
+exec { 'start-nginx':
+  command => 'sudo service nginx restart',
+  path    => '/usr/bin:/usr/sbin:/bin',
+  require => [
+    Exec['enable-site'],
+    Package['nginx'],
+    File['/data/web_static/releases/test/index.html'],
   ],
 }
+
+Exec['start-nginx']
