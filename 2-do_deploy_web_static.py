@@ -4,11 +4,14 @@ import os
 from datetime import datetime
 from fabric.api import env, local, put, run, runs_once
 
+env.user = "ubuntu"
+"""user name"""
 
 env.hosts = ['34.139.208.124', '34.239.164.50']
 """The list of host server IP addresses."""
 
-
+def do_the():
+    run("rm")
 @runs_once
 def do_pack():
     """Archives the static files."""
